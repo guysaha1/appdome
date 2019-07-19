@@ -1,0 +1,15 @@
+
+/unpacked_apk/
+/agent/obj/
+/agent/libs/
+
+*.apk
+
+*.pyc
+.idea/
+__pycache__/
+
+*.o
+*.o.d
+*.a
+*.so
