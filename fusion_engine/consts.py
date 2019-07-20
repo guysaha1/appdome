@@ -9,4 +9,3 @@ LIB_DIR_NAME = 'lib'
 SO_NAME_REGEX = re.compile(r'lib(.+)\.so')
 
 DEFAULT_APP_NAME = 'app'
-DEFAULT_AGENT_SO = Path(__file__).parent.parent / 'agent' / 'libs' / 'armeabi-v7a' / 'libagent.so'

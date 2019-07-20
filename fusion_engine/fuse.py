@@ -6,10 +6,12 @@ from manifest import get_application_name_and_package
 from smali import patch_smali_file
 
 
-def place_agent_so(apk_dir: Path, target_abi: str, agent_so: Path):
-    target_dir = apk_dir / LIB_DIR_NAME / target_abi
-    target_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy(agent_so, target_dir / agent_so.name)
+def place_agent_so(apk_dir: Path, target_abi: str, agent_so: Path, override: bool = True):
+    target_path = apk_dir / LIB_DIR_NAME / target_abi / agent_so.name
+    if not override and target_path.exists():
+        raise FileExistsError('{} already exists in original apk'.format(target_path))
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(agent_so, target_path)
 
 
 def get_smali_file(apk_dir: Path, class_name: str, package: str = '') -> Path:
@@ -40,7 +42,9 @@ def main(args: argparse.Namespace):
     manifest_path = args.apk_dir / MANIFEST_FILE_NAME
     app_name, package = get_application_name_and_package(str(manifest_path), default_app_name=DEFAULT_APP_NAME)
     smali_file = get_smali_file(args.apk_dir, app_name, package=package)
+    print('Patching {}'.format(smali_file))
     patch_smali_file(smali_file, agent_name, args.apk_dir)
+    print('Placing {} in lib directory'.format(args.agent_so))
     place_agent_so(args.apk_dir, target_abi, args.agent_so)
 
 

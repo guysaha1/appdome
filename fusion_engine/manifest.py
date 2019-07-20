@@ -15,10 +15,12 @@ def get_application_name_and_package(manifest_path: str, default_app_name: str =
         if not app_name:
             app_name = default_app_name
             app_tag.set(APPLICATION_NAME_ATTRIBUTE, app_name)
+            print('Patching {}'.format(manifest_path))
             parsed_manifest.write(manifest_path)
     else:
         app_name = default_app_name
         etree.SubElement(root, APPLICATION_TAG, attrib={APPLICATION_NAME_ATTRIBUTE: app_name})
+        print('Patching {}'.format(manifest_path))
         parsed_manifest.write(manifest_path)
     package = root.get(PACKAGE_TAG, '')
     return app_name, package

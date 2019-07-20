@@ -4,6 +4,8 @@
 /agent/libs/
 
 *.apk
+*.keystore
+*.tmp
 
 *.pyc
 .idea/
