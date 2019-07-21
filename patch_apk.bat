@@ -17,7 +17,7 @@ CALL %0 unpack %1
 CALL %0 patch || goto error
 CALL %0 pack %2 %3 || goto error
 CALL %0 install %4 || goto error
-CALL %0 logcat || goto error
+CALL %0 logcat %4 || goto error
 goto end
 
 :usage
@@ -26,7 +26,7 @@ echo or %0 unpack in.apk
 echo or %0 patch
 echo or %0 pack keystore password
 echo or %0 install package
-echo or %0 logcat
+echo or %0 logcat package
 echo or %0 clean
 goto end
 
@@ -63,7 +63,8 @@ goto end
 
 :logcat
 adb logcat -c
-adb logcat -s agent:D
+adb shell monkey -p %2 1
+adb logcat -s agent:I
 
 :popd_and_error
 popd
