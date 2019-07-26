@@ -64,7 +64,7 @@ goto end
 :logcat
 adb logcat -c
 adb shell monkey -p %2 1
-adb logcat -s agent:I
+adb logcat -s agent:D
 
 :popd_and_error
 popd
@@ -77,6 +77,9 @@ echo Cleaning
 if exist unpacked_apk rmdir /S /Q unpacked_apk
 if exist out.tmp.apk del /Q out.tmp.apk
 if exist out.apk del /Q out.apk
+pushd agent
+CALL build.bat clean
+popd
 :end
 popd
 exit /B
