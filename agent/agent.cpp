@@ -16,7 +16,7 @@ constexpr auto DT_PLTREL_VALUE = DT_RELA;
 constexpr auto DT_PLTREL_VALUE = DT_REL;
 #endif // defined(USE_RELA)
 
-const std::vector<std::string_view> MODULES_TO_IGNORE{ "/libagent.so", "/linker" };
+std::vector<std::string_view> MODULES_TO_IGNORE{};
 
 
 extern "C" int myOpen(const char* pathname, int flags, ...)
@@ -47,14 +47,17 @@ extern "C" int myOpen(const char* pathname, int flags, ...)
 void on_load()
 {
     __android_log_print(ANDROID_LOG_INFO, "agent", "agent started");
-    long pagesize = sysconf(_SC_PAGE_SIZE);
+    MODULES_TO_IGNORE.emplace_back("/libagent.so");
+    MODULES_TO_IGNORE.emplace_back("/linker");
+    int pagesize = sysconf(_SC_PAGE_SIZE);
     if (pagesize < 1) {
-        __android_log_print(ANDROID_LOG_ERROR, "agent", "invalid pagesize: %ld, errno: %d", pagesize, errno);
+        __android_log_print(ANDROID_LOG_ERROR, "agent", "invalid pagesize: %d, errno: %s", pagesize, strerror(errno));
         return;
     }
     HookInfo hookInfo{ "open", R_GENERIC_JUMP_SLOT, reinterpret_cast<ElfW(Addr)>(&myOpen), reinterpret_cast<ElfW(Addr)>(&open), pagesize };
     __android_log_print(ANDROID_LOG_DEBUG, "agent", "hooking function '%s' at %x using relocs of type %u",
-        hookInfo.symbol.data(), hookInfo.original, hookInfo.relocType);
+        hookInfo.symbol.data(), hookInfo.original, hookInfo.relocType
+    );
     int ret = dl_iterate_phdr(relocationTableHook, &hookInfo);
     __android_log_print(ANDROID_LOG_INFO, "agent", "agent finished: %d", ret);
 }
@@ -83,7 +86,7 @@ RelocTableHook::RelocTableHook(const dl_phdr_info* moduleInfo)
 {
     if (nullptr != moduleInfo->dlpi_name) {
         m_moduleName = { moduleInfo->dlpi_name };
-        __android_log_print(ANDROID_LOG_INFO, "agent", "looking at module %s", m_moduleName.data());
+        __android_log_print(ANDROID_LOG_INFO, "agent", "looking at module %s at %x", m_moduleName.data(), m_loadBias);
     }
 }
 
@@ -187,11 +190,10 @@ size_t RelocTableHook::performHook(const HookInfo* hookInfo)
                 __android_log_print(ANDROID_LOG_ERROR, "agent", "unexpected original value to hook: %x", originalValue);
                 continue;
             }
-            if (!changeProtection(addressToPatch, hookInfo->pagesize, sizeof(ElfW(Addr)), PROT_READ | PROT_WRITE)) {
+            if (!changeProtection(addressToPatch, hookInfo->pagesize, sizeof(ElfW(Addr)), PROT_READ | PROT_WRITE | PROT_EXEC)) {
                 continue;
             }
             *reinterpret_cast<ElfW(Addr)*>(addressToPatch) = hookInfo->hook;
-            changeProtection(addressToPatch, hookInfo->pagesize, sizeof(ElfW(Addr)), PROT_READ | PROT_EXEC);
             __android_log_print(ANDROID_LOG_INFO, "agent", "performed hook!");
             replacements += 1;
         }
@@ -200,16 +202,18 @@ size_t RelocTableHook::performHook(const HookInfo* hookInfo)
 }
 
 
-ElfW(Addr) align(ElfW(Addr) addr, long pagesize) {
+ElfW(Addr) align(ElfW(Addr) addr, int pagesize) {
     return addr & ~(pagesize - 1);
 }
 
-bool changeProtection(ElfW(Addr) addr, long pagesize, size_t len, int protection) {
+bool changeProtection(ElfW(Addr) addr, int pagesize, size_t len, int protection) {
     const auto aligned = align(addr, pagesize);
-    size_t totalLen = addr - aligned + len;
-    int ret = mprotect(reinterpret_cast<void*>(addr), totalLen, PROT_READ | PROT_WRITE);
+    size_t alignedLen = pagesize + align(addr - aligned + len, pagesize);
+    int ret = mprotect(reinterpret_cast<void*>(addr), alignedLen, protection);
     if (0 != ret) {
-        __android_log_print(ANDROID_LOG_ERROR, "agent", "mprotect failed on addr %x with prot %d: %d. errno: %d", aligned, protection, ret, errno);
+        __android_log_print(ANDROID_LOG_ERROR, "agent", "mprotect(%x, %u, %d) failed (pagesize %d): %d. errno: %s",
+            aligned, alignedLen, protection, pagesize, ret, strerror(errno)
+        );
         return false;
     }
     return true;

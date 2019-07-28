@@ -6,8 +6,8 @@
 
 void on_load() __attribute__((constructor));
 int relocationTableHook(struct dl_phdr_info* info, size_t size, void* data);
-ElfW(Addr) align(ElfW(Addr) addr, long pagesize);
-bool changeProtection(ElfW(Addr) addr, long pagesize, size_t len, int protection);
+ElfW(Addr) align(ElfW(Addr) addr, int pagesize);
+bool changeProtection(ElfW(Addr) addr, int pagesize, size_t len, int protection);
 
 struct HookInfo
 {
@@ -15,7 +15,7 @@ struct HookInfo
     ElfW(Word) relocType;
     ElfW(Addr) hook;
     ElfW(Addr) original;
-    long pagesize;
+    int pagesize;
 };
 
 class RelocTableHook
