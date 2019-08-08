@@ -16,6 +16,7 @@ struct HookInfo
     ElfW(Addr) hook;
     ElfW(Addr) original;
     int pagesize;
+    size_t numOfHooks;
 };
 
 class RelocTableHook

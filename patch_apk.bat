@@ -64,7 +64,7 @@ goto end
 :logcat
 adb logcat -c
 adb shell monkey -p %2 1
-adb logcat -s agent:D
+adb logcat -s agent:I
 
 :popd_and_error
 popd

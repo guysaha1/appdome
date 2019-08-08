@@ -30,16 +30,17 @@ extern "C" int myOpen(const char* pathname, int flags, ...)
         va_start(args, flags);
         mode = va_arg(args, int);
         va_end(args);
+        ignoreMode = false;
     }
+
     if (ignoreMode) {
         __android_log_print(ANDROID_LOG_INFO, "agent", "myOpen called with: %s, %d", pathnameOrNull, flags);
         result = open(pathname, flags);
-        __android_log_print(ANDROID_LOG_INFO, "agent", "myOpen result: %d", result);
     } else {
         __android_log_print(ANDROID_LOG_INFO, "agent", "myOpen called with: %s, %d, %d", pathnameOrNull, flags, mode);
         result = open(pathname, flags, mode);
-        __android_log_print(ANDROID_LOG_INFO, "agent", "myOpen result: %d", result);
     }
+    __android_log_print(ANDROID_LOG_INFO, "agent", "myOpen result: %d", result);
     return result;
 }
 
@@ -54,17 +55,18 @@ void on_load()
         __android_log_print(ANDROID_LOG_ERROR, "agent", "invalid pagesize: %d, errno: %s", pagesize, strerror(errno));
         return;
     }
-    HookInfo hookInfo{ "open", R_GENERIC_JUMP_SLOT, reinterpret_cast<ElfW(Addr)>(&myOpen), reinterpret_cast<ElfW(Addr)>(&open), pagesize };
+    HookInfo hookInfo{ "open", R_GENERIC_JUMP_SLOT, reinterpret_cast<ElfW(Addr)>(&myOpen), reinterpret_cast<ElfW(Addr)>(&open), pagesize, 0 };
     __android_log_print(ANDROID_LOG_DEBUG, "agent", "hooking function '%s' at %x using relocs of type %u",
         hookInfo.symbol.data(), hookInfo.original, hookInfo.relocType
     );
     int ret = dl_iterate_phdr(relocationTableHook, &hookInfo);
+    __android_log_print(ANDROID_LOG_INFO, "agent", "total of %u hooks performed", hookInfo.numOfHooks);
     __android_log_print(ANDROID_LOG_INFO, "agent", "agent finished: %d", ret);
 }
 
 int relocationTableHook(dl_phdr_info* info, size_t size, void* data)
 {
-    const HookInfo* hookInfo = reinterpret_cast<const HookInfo*>(data);
+    HookInfo* hookInfo = reinterpret_cast<HookInfo*>(data);
     RelocTableHook relocTableHook{ info };
     if (relocTableHook.shouldIgnoreModule(MODULES_TO_IGNORE)) {
         return 0;
@@ -76,6 +78,7 @@ int relocationTableHook(dl_phdr_info* info, size_t size, void* data)
 
     size_t hooksPerformed = relocTableHook.performHook(hookInfo);
     __android_log_print(ANDROID_LOG_INFO, "agent", "%u hooks performed", hooksPerformed);
+    hookInfo->numOfHooks += hooksPerformed;
     return 0;
 }
 
@@ -190,10 +193,12 @@ size_t RelocTableHook::performHook(const HookInfo* hookInfo)
                 __android_log_print(ANDROID_LOG_ERROR, "agent", "unexpected original value to hook: %x", originalValue);
                 continue;
             }
-            if (!changeProtection(addressToPatch, hookInfo->pagesize, sizeof(ElfW(Addr)), PROT_READ | PROT_WRITE | PROT_EXEC)) {
+            if (!changeProtection(addressToPatch, hookInfo->pagesize, sizeof(ElfW(Addr)), PROT_READ | PROT_WRITE)) {
                 continue;
             }
             *reinterpret_cast<ElfW(Addr)*>(addressToPatch) = hookInfo->hook;
+            // Changing the protection back to EXEC can fail due to SELinux, but the app doesn't crash even when mprotect fails.
+            changeProtection(addressToPatch, hookInfo->pagesize, sizeof(ElfW(Addr)), PROT_READ | PROT_EXEC);
             __android_log_print(ANDROID_LOG_INFO, "agent", "performed hook!");
             replacements += 1;
         }
@@ -208,11 +213,10 @@ ElfW(Addr) align(ElfW(Addr) addr, int pagesize) {
 
 bool changeProtection(ElfW(Addr) addr, int pagesize, size_t len, int protection) {
     const auto aligned = align(addr, pagesize);
-    size_t alignedLen = pagesize + align(addr - aligned + len, pagesize);
-    int ret = mprotect(reinterpret_cast<void*>(addr), alignedLen, protection);
+    int ret = mprotect(reinterpret_cast<void*>(aligned), len, protection);
     if (0 != ret) {
         __android_log_print(ANDROID_LOG_ERROR, "agent", "mprotect(%x, %u, %d) failed (pagesize %d): %d. errno: %s",
-            aligned, alignedLen, protection, pagesize, ret, strerror(errno)
+            aligned, len, protection, pagesize, ret, strerror(errno)
         );
         return false;
     }
